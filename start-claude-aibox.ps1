@@ -4,8 +4,8 @@ chcp 65001 | Out-Null
 $OutputEncoding = [System.Text.UTF8Encoding]::new()
 
 $env:CLAUDE_CODE_USE_FOUNDRY = "1"
-$env:ANTHROPIC_FOUNDRY_BASE_URL = "https://api.ai-box.vn"
-$env:ANTHROPIC_FOUNDRY_API_KEY = "sk-yiLKgHEBsYSQQ9TibKog5VkeQdrkmEAZ8ndimnOKsDcDOeAm"
+$env:ANTHROPIC_FOUNDRY_BASE_URL = ""
+$env:ANTHROPIC_FOUNDRY_API_KEY = ""
 
 $env:ANTHROPIC_DEFAULT_OPUS_MODEL = "deepseek-v4-pro[1m]"
 $env:ANTHROPIC_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES = "thinking,adaptive_thinking,temperature,effort,max_effort"
