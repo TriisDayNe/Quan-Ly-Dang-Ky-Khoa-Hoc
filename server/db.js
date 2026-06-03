@@ -1,195 +1,200 @@
-const initSqlJs = require('sql.js');
-const fs = require('fs');
-const path = require('path');
+const mysql = require('mysql2/promise');
+const bcrypt = require('bcryptjs');
 
-const DB_PATH = path.join(__dirname, 'data.db');
+const DB_HOST = process.env.DB_HOST || 'localhost';
+const DB_USER = process.env.DB_USER || 'root';
+const DB_PASSWORD = process.env.DB_PASSWORD ?? '';
+const DB_NAME = process.env.DB_NAME || 'qly_dkikh';
+
+let pool = null;
 let wrapper = null;
 
 class DbWrapper {
-  constructor(sqlDb, filePath) {
-    this.db = sqlDb;
-    this.filePath = filePath;
-    this._savePending = false;
+  constructor(connectionPool) {
+    this.pool = connectionPool;
   }
 
   prepare(sql) {
-    const stmt = this.db.prepare(sql);
-    const self = this;
-    const safe = (params) => params.map(v => v === undefined ? null : v);
+    const safe = (params) => params.map((value) => (value === undefined ? null : value));
     return {
-      get: (...params) => {
-        stmt.bind(safe(params));
-        if (stmt.step()) {
-          const row = stmt.getAsObject();
-          stmt.free();
-          return row;
-        }
-        stmt.free();
-        return undefined;
+      get: async (...params) => {
+        const [rows] = await this.pool.execute(sql, safe(params));
+        return rows[0];
       },
-      all: (...params) => {
-        stmt.bind(safe(params));
-        const rows = [];
-        while (stmt.step()) {
-          rows.push(stmt.getAsObject());
-        }
-        stmt.free();
+      all: async (...params) => {
+        const [rows] = await this.pool.execute(sql, safe(params));
         return rows;
       },
-      run: (...params) => {
-        stmt.bind(safe(params));
-        stmt.step();
-        stmt.free();
-        const lastId = self.db.exec("SELECT last_insert_rowid()")[0].values[0][0];
-        self._savePending = true;
-        return { lastInsertRowid: lastId, changes: self.db.getRowsModified() };
+      run: async (...params) => {
+        const [result] = await this.pool.execute(sql, safe(params));
+        return { lastInsertRowid: result.insertId, changes: result.affectedRows };
       }
     };
   }
 
   exec(sql) {
-    this.db.run(sql);
-    this._savePending = true;
+    return this.pool.query(sql);
   }
 
   save() {
-    if (this._savePending) {
-      const data = this.db.export();
-      fs.writeFileSync(this.filePath, Buffer.from(data));
-      this._savePending = false;
-    }
+    // No-op for MySQL. Kept for compatibility with the old SQLite wrapper.
   }
 }
 
-async function initDb() {
-  const SQL = await initSqlJs();
-  let buffer;
-  if (fs.existsSync(DB_PATH)) {
-    buffer = fs.readFileSync(DB_PATH);
-  }
-  const sqlDb = new SQL.Database(buffer);
-  sqlDb.run('PRAGMA foreign_keys = ON');
+async function ensureDatabaseExists() {
+  const bootstrapPool = mysql.createPool({
+    host: DB_HOST,
+    user: DB_USER,
+    password: DB_PASSWORD,
+    waitForConnections: true,
+    connectionLimit: 5,
+    charset: 'utf8mb4'
+  });
 
-  sqlDb.run(`
+  await bootstrapPool.execute(
+    `CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+  );
+  await bootstrapPool.end();
+}
+
+async function ensureSchema(connectionPool) {
+  await connectionPool.execute(`
     CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      code TEXT UNIQUE NOT NULL,
-      name TEXT NOT NULL,
-      email TEXT UNIQUE NOT NULL,
-      password TEXT NOT NULL,
-      role TEXT DEFAULT 'staff',
-      phone TEXT,
-      address TEXT,
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      code VARCHAR(20) NOT NULL UNIQUE,
+      name VARCHAR(100) NOT NULL,
+      email VARCHAR(100) NOT NULL UNIQUE,
+      password VARCHAR(255) NOT NULL,
+      role VARCHAR(20) DEFAULT 'staff',
+      phone VARCHAR(20),
+      address VARCHAR(255),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
-  try { sqlDb.run("ALTER TABLE users ADD COLUMN code TEXT"); } catch(e) {}
-  sqlDb.run(`
+
+  await connectionPool.execute(`
     CREATE TABLE IF NOT EXISTS students (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      code TEXT UNIQUE NOT NULL,
-      name TEXT NOT NULL,
-      email TEXT,
-      phone TEXT,
-      address TEXT,
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      code VARCHAR(20) NOT NULL UNIQUE,
+      name VARCHAR(100) NOT NULL,
+      email VARCHAR(100),
+      phone VARCHAR(20),
+      address VARCHAR(255),
       date_of_birth DATE,
-      gender TEXT DEFAULT 'male',
+      gender VARCHAR(10) DEFAULT 'male',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
-  try { sqlDb.run("ALTER TABLE students ADD COLUMN gender TEXT DEFAULT 'male'"); } catch(e) {}
-  sqlDb.run(`
+
+  await connectionPool.execute(`
     CREATE TABLE IF NOT EXISTS courses (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      code TEXT UNIQUE NOT NULL,
-      name TEXT NOT NULL,
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      code VARCHAR(20) NOT NULL UNIQUE,
+      name VARCHAR(150) NOT NULL,
       description TEXT,
-      duration INTEGER,
-      price REAL NOT NULL,
+      duration INT,
+      price DECIMAL(15,2) NOT NULL,
       start_date DATE,
       end_date DATE,
-      status TEXT DEFAULT 'active',
+      status VARCHAR(20) DEFAULT 'active',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
-  // Add columns if upgrading from old schema
-  try { sqlDb.run("ALTER TABLE courses ADD COLUMN start_date DATE"); } catch(e) {}
-  try { sqlDb.run("ALTER TABLE courses ADD COLUMN end_date DATE"); } catch(e) {}
-  sqlDb.run(`
+
+  await connectionPool.execute(`
     CREATE TABLE IF NOT EXISTS classes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      code TEXT UNIQUE NOT NULL,
-      course_id INTEGER NOT NULL,
-      teacher_id INTEGER,
-      name TEXT NOT NULL,
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      code VARCHAR(20) NOT NULL UNIQUE,
+      course_id INT NOT NULL,
+      teacher_id INT,
+      name VARCHAR(150) NOT NULL,
       start_date DATE,
       end_date DATE,
-      schedule TEXT,
-      room TEXT,
-      max_students INTEGER DEFAULT 20,
-      current_students INTEGER DEFAULT 0,
-      status TEXT DEFAULT 'upcoming',
+      schedule VARCHAR(100),
+      room VARCHAR(20),
+      max_students INT DEFAULT 20,
+      current_students INT DEFAULT 0,
+      status VARCHAR(20) DEFAULT 'upcoming',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (course_id) REFERENCES courses(id),
-      FOREIGN KEY (teacher_id) REFERENCES users(id)
-    )
+      CONSTRAINT fk_classes_course FOREIGN KEY (course_id) REFERENCES courses(id),
+      CONSTRAINT fk_classes_teacher FOREIGN KEY (teacher_id) REFERENCES users(id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
-  sqlDb.run(`
+
+  await connectionPool.execute(`
     CREATE TABLE IF NOT EXISTS registrations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      code TEXT UNIQUE NOT NULL,
-      student_id INTEGER NOT NULL,
-      class_id INTEGER NOT NULL,
-      employee_id INTEGER,
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      code VARCHAR(20) NOT NULL UNIQUE,
+      student_id INT NOT NULL,
+      class_id INT NOT NULL,
+      employee_id INT,
       registration_date DATE NOT NULL,
-      status TEXT DEFAULT 'pending',
-      total_amount REAL NOT NULL,
-      discount REAL DEFAULT 0,
-      final_amount REAL NOT NULL,
+      status VARCHAR(20) DEFAULT 'pending',
+      total_amount DECIMAL(15,2) NOT NULL,
+      discount DECIMAL(15,2) DEFAULT 0,
+      final_amount DECIMAL(15,2) NOT NULL,
       note TEXT,
-      class_ids TEXT,
+      class_ids VARCHAR(50),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (student_id) REFERENCES students(id),
-      FOREIGN KEY (class_id) REFERENCES classes(id),
-      FOREIGN KEY (employee_id) REFERENCES users(id)
-    )
+      CONSTRAINT fk_regs_student FOREIGN KEY (student_id) REFERENCES students(id),
+      CONSTRAINT fk_regs_class FOREIGN KEY (class_id) REFERENCES classes(id),
+      CONSTRAINT fk_regs_employee FOREIGN KEY (employee_id) REFERENCES users(id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
-  try { sqlDb.run("ALTER TABLE registrations ADD COLUMN employee_id INTEGER"); } catch(e) {}
-  try { sqlDb.run("ALTER TABLE registrations ADD COLUMN class_ids TEXT"); } catch(e) {}
-  sqlDb.run(`
+
+  await connectionPool.execute(`
     CREATE TABLE IF NOT EXISTS payments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      receipt_number TEXT UNIQUE NOT NULL,
-      registration_id INTEGER NOT NULL,
-      student_id INTEGER NOT NULL,
-      employee_id INTEGER,
-      amount REAL NOT NULL,
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      receipt_number VARCHAR(20) NOT NULL UNIQUE,
+      registration_id INT NOT NULL,
+      student_id INT NOT NULL,
+      employee_id INT,
+      amount DECIMAL(15,2) NOT NULL,
       payment_date DATE NOT NULL,
-      payment_method TEXT DEFAULT 'cash',
-      payer_name TEXT,
+      payment_method VARCHAR(20) DEFAULT 'cash',
+      payer_name VARCHAR(100),
       note TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (registration_id) REFERENCES registrations(id),
-      FOREIGN KEY (student_id) REFERENCES students(id),
-      FOREIGN KEY (employee_id) REFERENCES users(id)
-    )
+      CONSTRAINT fk_payments_registration FOREIGN KEY (registration_id) REFERENCES registrations(id),
+      CONSTRAINT fk_payments_student FOREIGN KEY (student_id) REFERENCES students(id),
+      CONSTRAINT fk_payments_employee FOREIGN KEY (employee_id) REFERENCES users(id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
-  try { sqlDb.run("ALTER TABLE payments ADD COLUMN employee_id INTEGER"); } catch(e) {}
 
-  wrapper = new DbWrapper(sqlDb, DB_PATH);
+  const adminHash = bcrypt.hashSync('admin123', 10);
+  await connectionPool.execute(
+    `INSERT INTO users (code, name, email, password, role, phone, address)
+     SELECT ?, ?, ?, ?, ?, ?, ?
+     FROM DUAL
+     WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = ?)
+    `,
+    ['ADMIN', 'Quản trị viên', 'admin@trungtam.com', adminHash, 'admin', '0900000000', 'Trung tâm Anh ngữ', 'admin@trungtam.com']
+  );
+}
 
-  const bcrypt = require('bcryptjs');
-  const admin = wrapper.prepare("SELECT id FROM users WHERE role = ?").get('admin');
-  if (!admin) {
-    const hash = bcrypt.hashSync('admin123', 10);
-    wrapper.prepare("INSERT INTO users (code, name, email, password, role, phone, address) VALUES (?,?,?,?,?,?,?)").run('ADMIN', 'Quản trị viên', 'admin@trungtam.com', hash, 'admin', '0900000000', 'Trung tâm Anh ngữ');
-    console.log('Admin account created: admin@trungtam.com / admin123');
-  } else if (!admin.code) {
-    wrapper.prepare("UPDATE users SET code = ? WHERE id = ?").run('ADMIN', admin.id);
+async function initDb() {
+  if (pool) {
+    return wrapper;
   }
 
-  wrapper.save();
-  setInterval(() => wrapper.save(), 10000);
+  await ensureDatabaseExists();
+  pool = mysql.createPool({
+    host: DB_HOST,
+    user: DB_USER,
+    password: DB_PASSWORD,
+    database: DB_NAME,
+    waitForConnections: true,
+    connectionLimit: 10,
+    charset: 'utf8mb4'
+  });
+
+  await ensureSchema(pool);
+  wrapper = new DbWrapper(pool);
+  return wrapper;
+}
+
+function connectDb() {
+  return initDb();
 }
 
 function getDb() {
@@ -197,16 +202,16 @@ function getDb() {
   return wrapper;
 }
 
-// Proxy only for db operations (prepare, exec, save)
 const dbProxy = new Proxy({}, {
   get(target, prop) {
-    if (prop === 'initDb' || prop === 'getDb') return target[prop];
+    if (prop in target) return target[prop];
     if (!wrapper) throw new Error('Database not initialized');
-    const val = wrapper[prop];
-    return typeof val === 'function' ? val.bind(wrapper) : val;
+    const value = wrapper[prop];
+    return typeof value === 'function' ? value.bind(wrapper) : value;
   }
 });
 
 module.exports = dbProxy;
 module.exports.initDb = initDb;
+module.exports.connectDb = connectDb;
 module.exports.getDb = getDb;

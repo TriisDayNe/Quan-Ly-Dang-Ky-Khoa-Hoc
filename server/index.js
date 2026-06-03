@@ -28,6 +28,14 @@ app.get('*', (req, res) => {
   }
 });
 
+app.use((err, req, res, next) => {
+  console.error(err);
+  if (res.headersSent) {
+    return next(err);
+  }
+  res.status(500).json({ error: 'Lỗi máy chủ' });
+});
+
 initDb().then(() => {
   app.listen(PORT, () => {
     console.log(`Server running at http://localhost:${PORT}`);
