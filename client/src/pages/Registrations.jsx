@@ -60,10 +60,17 @@ export default function Registrations() {
   }
 
   // Calculate total from selected classes
+  const parsePrice = (v) => {
+    if (typeof v === 'number') return v
+    if (!v) return 0
+    const n = Number(String(v).replace(/[^0-9.-]+/g, ''))
+    return isNaN(n) ? 0 : n
+  }
+
   const calcTotal = () => {
     return selectedClasses.reduce((sum, cid) => {
       const cls = classes.find(c => c.id == cid)
-      return sum + (cls?.course_price || 0)
+      return sum + parsePrice(cls?.course_price)
     }, 0)
   }
 
@@ -74,7 +81,7 @@ export default function Registrations() {
     try {
       const payload = {
         ...form,
-        class_ids: selectedClasses
+        class_ids: selectedClasses.join(',')
       }
       if (editing) {
         payload.class_id = selectedClasses[0]
@@ -82,6 +89,8 @@ export default function Registrations() {
         payload.total_amount = calcTotal()
         await axios.put(`/api/registrations/${editing.id}`, payload)
       } else {
+        // include computed total_amount for backend convenience
+        payload.total_amount = calcTotal()
         await axios.post('/api/registrations', payload)
       }
       setModalOpen(false); fetchData()
@@ -216,7 +225,7 @@ export default function Registrations() {
                     <input type="checkbox" checked={isChecked} onChange={() => toggleClass(c.id)} className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" />
                     <span className="flex-1 font-medium text-gray-700">{c.code} - {c.name}</span>
                     <span className="text-xs text-gray-400">{c.course_name}</span>
-                    <span className="text-xs font-medium text-blue-600">{c.course_price ? new Intl.NumberFormat('vi-VN').format(c.course_price) + 'đ' : ''}</span>
+                    <span className="text-xs font-medium text-blue-600">{c.course_price ? new Intl.NumberFormat('vi-VN').format(parsePrice(c.course_price)) + 'đ' : ''}</span>
                   </label>
                 )
               })}
@@ -289,7 +298,7 @@ export default function Registrations() {
                         <span className="font-medium text-gray-700">{cls.code || ''} - {cls.name}</span>
                         <span className="text-gray-400 ml-2">({cls.course_name})</span>
                       </div>
-                      <span className="font-medium text-blue-600">{cls.course_price ? new Intl.NumberFormat('vi-VN').format(cls.course_price) + ' đ' : ''}</span>
+                      <span className="font-medium text-blue-600">{cls.course_price ? new Intl.NumberFormat('vi-VN').format(parsePrice(cls.course_price)) + ' đ' : ''}</span>
                     </div>
                   ))}
                   <div className="flex justify-between text-sm font-bold text-lg border-t pt-2 mt-2">
