@@ -13,10 +13,15 @@ export default function Register() {
   const navigate = useNavigate()
 
   const update = (field, value) => setForm(prev => ({ ...prev, [field]: value }))
+  const isValidPhone = (phone) => /^\d{10}$/.test(phone)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    if (!isValidPhone(form.phone)) {
+      setError('Số điện thoại phải gồm đúng 10 chữ số')
+      return
+    }
     setLoading(true)
     try {
       await register(form)
@@ -71,9 +76,11 @@ export default function Register() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Số điện thoại</label>
-              <input type="text" value={form.phone} onChange={e => update('phone', e.target.value)}
+              <input type="text" value={form.phone} onChange={e => update('phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                maxLength={10} inputMode="numeric" pattern="[0-9]{10}"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-                placeholder="0900000000" />
+                placeholder="0900000000" required />
+              <p className="mt-1 text-xs text-gray-500">Phải là 10 chữ số và chưa được sử dụng.</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Mật khẩu</label>

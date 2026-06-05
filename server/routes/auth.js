@@ -7,6 +7,15 @@ const asyncHandler = require('../utils/asyncHandler');
 
 const router = express.Router();
 
+const isValidPhone = (phone) => /^\d{10}$/.test(String(phone || ''));
+
+async function genEmployeeCode() {
+  const last = await db.prepare("SELECT code FROM users WHERE code LIKE 'NV%' ORDER BY id DESC LIMIT 1").get();
+  if (!last) return 'NV001';
+  const num = parseInt(last.code.replace('NV', '')) + 1;
+  return 'NV' + String(num).padStart(3, '0');
+}
+
 router.post('/login', asyncHandler(async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Vui lòng nhập email và mật khẩu' });
@@ -23,13 +32,20 @@ router.post('/login', asyncHandler(async (req, res) => {
 router.post('/register', asyncHandler(async (req, res) => {
   const { name, email, password, phone } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: 'Vui lòng nhập đầy đủ thông tin' });
+  if (phone && !isValidPhone(phone)) return res.status(400).json({ error: 'Số điện thoại phải gồm đúng 10 chữ số' });
 
   const existing = await db.prepare('SELECT id FROM users WHERE email = ?').get(email);
   if (existing) return res.status(400).json({ error: 'Email đã được sử dụng' });
 
+  if (phone) {
+    const existingPhone = await db.prepare('SELECT id FROM users WHERE phone = ?').get(phone);
+    if (existingPhone) return res.status(400).json({ error: 'Số điện thoại đã được sử dụng' });
+  }
+
+  const code = await genEmployeeCode();
   const hash = bcrypt.hashSync(password, 10);
-  const result = await db.prepare('INSERT INTO users (name, email, password, role, phone) VALUES (?, ?, ?, ?, ?)').run(name, email, hash, 'staff', phone || '');
-  res.json({ message: 'Đăng ký thành công', id: result.lastInsertRowid });
+  const result = await db.prepare('INSERT INTO users (code, name, email, password, role, phone, password_display) VALUES (?, ?, ?, ?, ?, ?, ?)').run(code, name, email, hash, 'staff', phone || null, password);
+  res.json({ message: 'Đăng ký thành công', id: result.lastInsertRowid, code });
 }));
 
 router.get('/me', asyncHandler(async (req, res) => {

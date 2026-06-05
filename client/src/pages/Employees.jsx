@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import axios from 'axios'
-import { Plus, Search, Edit2, Trash2 } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, Eye, EyeOff } from 'lucide-react'
 import Modal from '../components/Modal'
 import { useAuth } from '../context/AuthContext'
 
-const emptyForm = { name: '', email: '', role: 'staff', phone: '', address: '' }
+const emptyForm = { name: '', email: '', role: 'staff', phone: '', address: '', password: '' }
 const roleLabels = { admin: 'Admin', staff: 'Nhân viên' }
 
 export default function Employees() {
@@ -16,6 +16,7 @@ export default function Employees() {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [loading, setLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
 
   const fetchData = useCallback(() => {
     axios.get('/api/employees', { params: { search } }).then(r => setEmployees(r.data))
@@ -24,10 +25,13 @@ export default function Employees() {
   useEffect(() => { fetchData() }, [fetchData])
 
   const openCreate = () => { setEditing(null); setForm(emptyForm); setModalOpen(true) }
-  const openEdit = (e) => { setEditing(e); setForm({ name: e.name, email: e.email, role: e.role, phone: e.phone || '', address: e.address || '' }); setModalOpen(true) }
+  const openEdit = (e) => { setEditing(e); setForm({ name: e.name, email: e.email, role: e.role, phone: e.phone || '', address: e.address || '', password: '' }); setModalOpen(true) }
+
+  const isValidPhone = (phone) => /^\d{10}$/.test(phone)
 
   const handleSubmit = async (ev) => {
     ev.preventDefault()
+    if (!isValidPhone(form.phone)) return alert('Số điện thoại phải gồm đúng 10 chữ số')
     setLoading(true)
     try {
       if (editing) await axios.put(`/api/employees/${editing.id}`, form)
@@ -66,6 +70,7 @@ export default function Employees() {
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Mã NV</th>
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Họ tên</th>
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Email</th>
+                <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Mật khẩu</th>
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">SĐT</th>
                 <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Vai trò</th>
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Ngày tạo</th>
@@ -74,12 +79,13 @@ export default function Employees() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {employees.length === 0 ? (
-                <tr><td colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-gray-400">Chưa có nhân viên nào</td></tr>
+                <tr><td colSpan={isAdmin ? 8 : 7} className="text-center py-8 text-gray-400">Chưa có nhân viên nào</td></tr>
               ) : employees.map(e => (
                 <tr key={e.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm font-medium text-blue-600">{e.code}</td>
                   <td className="px-4 py-3 text-sm font-medium text-gray-800">{e.name}</td>
                   <td className="px-4 py-3 text-sm text-gray-500">{e.email}</td>
+                  <td className="px-4 py-3 text-sm font-medium text-gray-700 whitespace-nowrap">{e.password_display || e.code}</td>
                   <td className="px-4 py-3 text-sm text-gray-500">{e.phone || '-'}</td>
                   <td className="px-4 py-3 text-center">
                     <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${e.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>{roleLabels[e.role]}</span>
@@ -102,11 +108,9 @@ export default function Employees() {
 
       <Modal title={editing ? 'Sửa nhân viên' : 'Thêm nhân viên'} open={modalOpen} onClose={() => setModalOpen(false)} size="max-w-xl">
         <form onSubmit={handleSubmit} className="space-y-4">
-          {!editing && (
-            <div className="bg-amber-50 text-amber-700 px-4 py-3 rounded-lg text-sm">
-              Mã nhân viên sẽ được tạo tự động. <strong>Mật khẩu mặc định chính là mã nhân viên.</strong>
-            </div>
-          )}
+          <div className="bg-amber-50 text-amber-700 px-4 py-3 rounded-lg text-sm">
+            Mã nhân viên sẽ được tạo tự động. {!editing ? 'Nếu không nhập mật khẩu, hệ thống sẽ dùng mã nhân viên làm mật khẩu mặc định.' : 'Có thể để trống nếu không muốn đổi mật khẩu.'}
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Họ tên</label>
             <input type="text" value={form.name} onChange={e => update('name', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" required />
@@ -118,7 +122,22 @@ export default function Employees() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Số điện thoại</label>
-              <input type="text" value={form.phone} onChange={e => update('phone', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" required />
+              <input type="text" value={form.phone} onChange={e => update('phone', e.target.value.replace(/\D/g, '').slice(0, 10))} maxLength={10} inputMode="numeric" pattern="[0-9]{10}" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" required />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Mật khẩu {editing && <span className="text-xs text-gray-500">(để trống nếu không đổi)</span>}</label>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={form.password}
+                onChange={e => update('password', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 pr-10"
+                placeholder={editing ? 'Nhập mật khẩu mới' : 'Có thể để trống để dùng mã nhân viên'}
+              />
+              <button type="button" onClick={() => setShowPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">

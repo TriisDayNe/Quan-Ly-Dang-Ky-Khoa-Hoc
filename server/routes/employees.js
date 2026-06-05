@@ -7,6 +7,8 @@ const asyncHandler = require('../utils/asyncHandler');
 const router = express.Router();
 router.use(auth);
 
+const isValidPhone = (phone) => /^\d{10}$/.test(String(phone || ''));
+
 async function genCode() {
   const last = await db.prepare("SELECT code FROM users WHERE code LIKE 'NV%' ORDER BY id DESC LIMIT 1").get();
   if (!last) return 'NV001';
@@ -16,7 +18,7 @@ async function genCode() {
 
 router.get('/', asyncHandler(async (req, res) => {
   const { search } = req.query;
-  let sql = "SELECT id, code, name, email, role, phone, address, created_at FROM users WHERE 1=1";
+  let sql = "SELECT id, code, name, email, role, phone, address, password_display, created_at FROM users WHERE 1=1";
   const params = [];
   if (search) { sql += ' AND (name LIKE ? OR email LIKE ? OR phone LIKE ? OR code LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`); }
   sql += ' ORDER BY id DESC';
@@ -28,29 +30,43 @@ router.get('/teachers', asyncHandler(async (req, res) => {
 }));
 
 router.get('/:id', asyncHandler(async (req, res) => {
-  const u = await db.prepare('SELECT id, code, name, email, role, phone, address, created_at FROM users WHERE id = ?').get(req.params.id);
+  const u = await db.prepare('SELECT id, code, name, email, role, phone, address, password_display, created_at FROM users WHERE id = ?').get(req.params.id);
   if (!u) return res.status(404).json({ error: 'Không tìm thấy nhân viên' });
   res.json(u);
 }));
 
 router.post('/', adminOnly, asyncHandler(async (req, res) => {
-  const { name, email, role, phone, address } = req.body;
+  const { name, email, role, phone, address, password } = req.body;
   if (!name || !email) return res.status(400).json({ error: 'Vui lòng nhập họ tên và email' });
   const exists = await db.prepare('SELECT id FROM users WHERE email = ?').get(email);
   if (exists) return res.status(400).json({ error: 'Email đã được sử dụng' });
+  if (phone && !isValidPhone(phone)) return res.status(400).json({ error: 'Số điện thoại phải gồm đúng 10 chữ số' });
+  if (phone) {
+    const existingPhone = await db.prepare('SELECT id FROM users WHERE phone = ?').get(phone);
+    if (existingPhone) return res.status(400).json({ error: 'Số điện thoại đã được sử dụng' });
+  }
   const code = await genCode();
-  const hash = bcrypt.hashSync(code, 10); // password = code
-  const r = await db.prepare('INSERT INTO users (code, name, email, password, role, phone, address) VALUES (?,?,?,?,?,?,?)').run(code, name, email, hash, role || 'staff', phone || '', address || '');
+  const hash = bcrypt.hashSync(password || code, 10);
+  const r = await db.prepare('INSERT INTO users (code, name, email, password, role, phone, address, password_display) VALUES (?,?,?,?,?,?,?,?)').run(code, name, email, hash, role || 'staff', phone || null, address || '', password || code);
   res.json({ message: 'Thêm nhân viên thành công', id: r.lastInsertRowid, code });
 }));
 
 router.put('/:id', adminOnly, asyncHandler(async (req, res) => {
   const existing = await db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Không tìm thấy' });
-  const { name, email, role, phone, address } = req.body;
+  const { name, email, role, phone, address, password } = req.body;
+  if (phone && !isValidPhone(phone)) return res.status(400).json({ error: 'Số điện thoại phải gồm đúng 10 chữ số' });
+  if (phone) {
+    const existingPhone = await db.prepare('SELECT id FROM users WHERE phone = ? AND id != ?').get(phone, req.params.id);
+    if (existingPhone) return res.status(400).json({ error: 'Số điện thoại đã được sử dụng' });
+  }
+  const nextPassword = password ? bcrypt.hashSync(password, 10) : existing.password;
   await db.prepare('UPDATE users SET name=?, email=?, role=?, phone=?, address=? WHERE id=?').run(
     name ?? existing.name, email ?? existing.email, role ?? existing.role, phone ?? existing.phone, address ?? existing.address, req.params.id
   );
+  if (password) {
+    await db.prepare('UPDATE users SET password=?, password_display=? WHERE id=?').run(nextPassword, password, req.params.id)
+  }
   res.json({ message: 'Cập nhật thành công' });
 }));
 

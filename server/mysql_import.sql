@@ -15,8 +15,9 @@ CREATE TABLE users (
   email VARCHAR(100) NOT NULL UNIQUE,
   password VARCHAR(255) NOT NULL,
   role VARCHAR(20) DEFAULT 'staff',
-  phone VARCHAR(20),
+  phone VARCHAR(20) UNIQUE,
   address VARCHAR(255),
+  password_display VARCHAR(255),
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -99,11 +100,11 @@ CREATE TABLE payments (
   CONSTRAINT fk_payments_employee FOREIGN KEY (employee_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO users (id, code, name, email, password, role, phone, address) VALUES
-(1, 'ADMIN', 'Quản trị viên', 'admin@trungtam.com', '$2a$11$0s0fwdlrtRp86kDOdAMGMObZ1wswdovpGKY9qYkvXIibwI5l2gFEW', 'admin', '0900000000', '123 Nguyễn Huệ, Q1, TP.HCM'),
-(2, 'NV001', 'Nguyễn Văn Tuấn', 'tuan.nguyen@trungtam.com', '$2a$11$GkLTlMkgg5wEn3mAb2UHKuQ41WoQriY7x7V0bfZ/UJ3kCL.jIQoxO', 'staff', '0901111222', '456 Lê Lợi, Q3, TP.HCM'),
-(3, 'NV002', 'Trần Thị Lan', 'lan.tran@trungtam.com', '$2a$11$nHj7jy1kkJEqUqCvu.MPLOdeAniihGbKbVNJnvpGbJO/YADRl35a6', 'staff', '0903333444', '789 Điện Biên Phủ, Bình Thạnh, TP.HCM'),
-(4, 'NV003', 'Phạm Văn Minh', 'minh.pham@trungtam.com', '$2a$11$emF.wdEmsD71xWww6nez2OyVcMXIYHrI35XTmFisMhlLzUlnuUecC', 'staff', '0905555666', '12 CMT8, Tân Bình, TP.HCM');
+INSERT INTO users (id, code, name, email, password, role, phone, address, password_display) VALUES
+(1, 'ADMIN', 'Quản trị viên', 'admin@trungtam.com', '$2a$11$0s0fwdlrtRp86kDOdAMGMObZ1wswdovpGKY9qYkvXIibwI5l2gFEW', 'admin', '0900000000', '123 Nguyễn Huệ, Q1, TP.HCM', 'admin123'),
+(2, 'NV001', 'Nguyễn Văn Tuấn', 'tuan.nguyen@trungtam.com', '$2a$11$GkLTlMkgg5wEn3mAb2UHKuQ41WoQriY7x7V0bfZ/UJ3kCL.jIQoxO', 'staff', '0901111222', '456 Lê Lợi, Q3, TP.HCM', 'NV001'),
+(3, 'NV002', 'Trần Thị Lan', 'lan.tran@trungtam.com', '$2a$11$nHj7jy1kkJEqUqCvu.MPLOdeAniihGbKbVNJnvpGbJO/YADRl35a6', 'staff', '0903333444', '789 Điện Biên Phủ, Bình Thạnh, TP.HCM', 'NV002'),
+(4, 'NV003', 'Phạm Văn Minh', 'minh.pham@trungtam.com', '$2a$11$emF.wdEmsD71xWww6nez2OyVcMXIYHrI35XTmFisMhlLzUlnuUecC', 'staff', '0905555666', '12 CMT8, Tân Bình, TP.HCM', 'NV003');
 
 INSERT INTO courses (id, code, name, description, duration, price, start_date, end_date, status) VALUES
 (1, 'KH001', 'TOEIC Cơ Bản', 'Luyện TOEIC 450-550+', 36, 4500000, '2026-07-01', '2026-09-23', 'active'),

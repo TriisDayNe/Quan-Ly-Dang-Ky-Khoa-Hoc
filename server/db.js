@@ -66,11 +66,40 @@ async function ensureSchema(connectionPool) {
       email VARCHAR(100) NOT NULL UNIQUE,
       password VARCHAR(255) NOT NULL,
       role VARCHAR(20) DEFAULT 'staff',
-      phone VARCHAR(20),
+      phone VARCHAR(20) UNIQUE,
       address VARCHAR(255),
+      password_display VARCHAR(255),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+
+  const [passwordDisplayColumn] = await connectionPool.execute(`SHOW COLUMNS FROM users LIKE 'password_display'`);
+  if (passwordDisplayColumn.length === 0) {
+    try {
+      await connectionPool.execute(`ALTER TABLE users ADD COLUMN password_display VARCHAR(255) AFTER address`);
+    } catch (error) {
+      console.warn('Could not add password_display column to users table:', error.message);
+    }
+  }
+
+  await connectionPool.execute(`UPDATE users SET password_display = COALESCE(password_display, CASE WHEN email = 'admin@trungtam.com' THEN 'admin123' ELSE code END)`);
+  const [blankStaffCodes] = await connectionPool.execute(`SELECT id FROM users WHERE (code IS NULL OR code = '') AND role != 'admin' ORDER BY id`);
+  for (const row of blankStaffCodes) {
+    const last = await connectionPool.execute("SELECT code FROM users WHERE code LIKE 'NV%' ORDER BY id DESC LIMIT 1");
+    const lastCode = last[0][0]?.code;
+    const nextCode = lastCode ? 'NV' + String(parseInt(lastCode.replace('NV', '')) + 1).padStart(3, '0') : 'NV001';
+    await connectionPool.execute('UPDATE users SET code = ? WHERE id = ?', [nextCode, row.id]);
+  }
+
+  await connectionPool.execute(`UPDATE users SET phone = NULL WHERE phone = ''`);
+  const [phoneIndexes] = await connectionPool.execute(`SHOW INDEX FROM users WHERE Key_name = 'uq_users_phone'`);
+  if (phoneIndexes.length === 0) {
+    try {
+      await connectionPool.execute(`ALTER TABLE users ADD UNIQUE KEY uq_users_phone (phone)`);
+    } catch (error) {
+      console.warn('Could not add unique phone index to users table:', error.message);
+    }
+  }
 
   await connectionPool.execute(`
     CREATE TABLE IF NOT EXISTS students (
