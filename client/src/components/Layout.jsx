@@ -18,7 +18,7 @@ export default function Layout({ children }) {
   }
 
   const links = [
-    { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/', icon: LayoutDashboard, label: 'Tổng quan' },
     { to: '/courses', icon: BookOpen, label: 'Khóa học' },
     { to: '/classes', icon: Building, label: 'Lớp học' },
     { to: '/students', icon: GraduationCap, label: 'Học viên' },
@@ -85,7 +85,7 @@ export default function Layout({ children }) {
           </button>
           <div className="flex-1">
             <h2 className="text-lg font-semibold text-gray-800">
-              {links.find(l => l.to === window.location.pathname || (l.to === '/' && window.location.pathname === '/'))?.label || 'Dashboard'}
+              {links.find(l => l.to === window.location.pathname || (l.to === '/' && window.location.pathname === '/'))?.label || 'Tổng quan'}
             </h2>
           </div>
           <div className="flex items-center gap-3">
