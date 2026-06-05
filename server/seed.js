@@ -158,7 +158,7 @@ async function seed() {
   }
   // Update class current_students
   for (let cid = 1; cid <= 10; cid++) {
-    const count = get("SELECT COUNT(*) as c FROM registrations WHERE (class_id = ? OR class_ids LIKE ?) AND status != 'cancelled'", [cid, `%${cid}%`]);
+    const count = get("SELECT COUNT(*) as c FROM registrations WHERE (class_id = ? OR FIND_IN_SET(?, class_ids) > 0) AND status != 'cancelled'", [cid, String(cid)]);
     if (count) {
       run("UPDATE classes SET current_students = ? WHERE id = ?", [count.c, cid]);
     }

@@ -6,6 +6,27 @@ const asyncHandler = require('../utils/asyncHandler');
 const router = express.Router();
 router.use(auth);
 
+const isValidPhone = (phone) => /^0\d{9}$/.test(String(phone || '').trim());
+
+function normalizeClassIds(classIds, fallbackClassId) {
+  if (Array.isArray(classIds)) {
+    return classIds
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+  }
+  if (typeof classIds === 'string') {
+    return classIds
+      .split(',')
+      .map((id) => Number(String(id).trim()))
+      .filter((id) => Number.isInteger(id) && id > 0);
+  }
+  if (fallbackClassId !== undefined && fallbackClassId !== null && fallbackClassId !== '') {
+    const parsed = Number(fallbackClassId);
+    return Number.isInteger(parsed) && parsed > 0 ? [parsed] : [];
+  }
+  return [];
+}
+
 async function genCode() {
   const last = await db.prepare("SELECT code FROM registrations ORDER BY id DESC LIMIT 1").get();
   if (!last) return 'PDK001';
@@ -65,8 +86,18 @@ router.post('/', asyncHandler(async (req, res) => {
   const { student_id, class_ids, class_id, employee_id, registration_date, status } = req.body;
   if (!student_id) return res.status(400).json({ error: 'Vui lòng chọn học viên' });
 
-  const classList = class_ids || (class_id ? [class_id] : []);
+  const classList = normalizeClassIds(class_ids, class_id);
   if (classList.length === 0) return res.status(400).json({ error: 'Vui lòng chọn ít nhất 1 lớp học' });
+
+  const student = await db.prepare('SELECT id, phone FROM students WHERE id = ?').get(student_id);
+  if (!student) return res.status(400).json({ error: 'Học viên không tồn tại' });
+  if (!isValidPhone(student.phone)) {
+    return res.status(400).json({ error: 'Số điện thoại học viên phải bắt đầu bằng số 0 và gồm đúng 10 chữ số' });
+  }
+  const duplicateEmployeePhone = await db.prepare('SELECT id FROM users WHERE phone = ?').get(student.phone);
+  if (duplicateEmployeePhone) {
+    return res.status(400).json({ error: 'Số điện thoại học viên đang trùng với nhân viên, vui lòng cập nhật lại trước khi tạo phiếu đăng ký' });
+  }
 
   // Auto-calculate total from course prices
   let total = 0;
@@ -88,7 +119,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
   // Update current_students for all selected classes
   for (const cid of classList) {
-    await db.prepare('UPDATE classes SET current_students = (SELECT COUNT(*) FROM registrations WHERE (class_id = ? OR class_ids LIKE ?) AND status != ?) WHERE id = ?').run(cid, `%${cid}%`, 'cancelled', cid);
+    await db.prepare('UPDATE classes SET current_students = (SELECT COUNT(*) FROM registrations WHERE (class_id = ? OR FIND_IN_SET(?, class_ids) > 0) AND status != ?) WHERE id = ?').run(cid, String(cid), 'cancelled', cid);
   }
 
   res.json({ message: 'Tạo phiếu đăng ký thành công', id: r.lastInsertRowid, code, total_amount: total });
@@ -98,11 +129,27 @@ router.put('/:id', asyncHandler(async (req, res) => {
   const existing = await db.prepare('SELECT * FROM registrations WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Không tìm thấy' });
   const { student_id, class_id, class_ids, employee_id, registration_date, status, total_amount } = req.body;
+
+  const nextStudentId = student_id ?? existing.student_id;
+  const student = await db.prepare('SELECT id, phone FROM students WHERE id = ?').get(nextStudentId);
+  if (!student) return res.status(400).json({ error: 'Học viên không tồn tại' });
+  if (!isValidPhone(student.phone)) {
+    return res.status(400).json({ error: 'Số điện thoại học viên phải bắt đầu bằng số 0 và gồm đúng 10 chữ số' });
+  }
+  const duplicateEmployeePhone = await db.prepare('SELECT id FROM users WHERE phone = ?').get(student.phone);
+  if (duplicateEmployeePhone) {
+    return res.status(400).json({ error: 'Số điện thoại học viên đang trùng với nhân viên, vui lòng cập nhật lại trước khi sửa phiếu đăng ký' });
+  }
+
+  const normalizedClassList = normalizeClassIds(class_ids, class_id);
+  const nextClassId = normalizedClassList.length > 0 ? normalizedClassList[0] : (class_id ?? existing.class_id);
+  const nextClassIds = normalizedClassList.length > 0 ? normalizedClassList.join(',') : (class_ids ?? existing.class_ids);
+
   await db.prepare(`UPDATE registrations SET student_id=?, class_id=?, employee_id=?, registration_date=?, status=?, total_amount=?, final_amount=?, class_ids=? WHERE id=?`).run(
-    student_id ?? existing.student_id, class_id ?? existing.class_id, employee_id ?? existing.employee_id,
+    nextStudentId, nextClassId, employee_id ?? existing.employee_id,
     registration_date ?? existing.registration_date, status ?? existing.status,
     total_amount ?? existing.total_amount, total_amount ?? existing.total_amount,
-    class_ids ?? existing.class_ids, req.params.id
+    nextClassIds, req.params.id
   );
   res.json({ message: 'Cập nhật thành công' });
 }));

@@ -23,8 +23,11 @@ export default function Students() {
   const openCreate = () => { setEditing(null); setForm(emptyForm); setModalOpen(true) }
   const openEdit = (s) => { setEditing(s); setForm({ name: s.name, email: s.email || '', phone: s.phone || '', address: s.address || '', date_of_birth: s.date_of_birth || '', gender: s.gender || 'male' }); setModalOpen(true) }
 
+  const isValidPhone = (phone) => /^0\d{9}$/.test(phone)
+
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (!isValidPhone(form.phone)) return alert('Số điện thoại phải bắt đầu bằng số 0 và gồm đúng 10 chữ số')
     setLoading(true)
     try {
       if (editing) await axios.put(`/api/students/${editing.id}`, form)
@@ -118,7 +121,7 @@ export default function Students() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Số điện thoại</label>
-              <input type="text" value={form.phone} onChange={e => update('phone', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" required />
+              <input type="text" value={form.phone} onChange={e => update('phone', e.target.value.replace(/\D/g, '').slice(0, 10))} maxLength={10} inputMode="numeric" pattern="0[0-9]{9}" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" required />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">

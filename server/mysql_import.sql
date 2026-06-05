@@ -15,7 +15,7 @@ CREATE TABLE users (
   email VARCHAR(100) NOT NULL UNIQUE,
   password VARCHAR(255) NOT NULL,
   role VARCHAR(20) DEFAULT 'staff',
-  phone VARCHAR(20) UNIQUE,
+  phone VARCHAR(20) NOT NULL UNIQUE,
   address VARCHAR(255),
   password_display VARCHAR(255),
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -26,12 +26,71 @@ CREATE TABLE students (
   code VARCHAR(20) NOT NULL UNIQUE,
   name VARCHAR(100) NOT NULL,
   email VARCHAR(100),
-  phone VARCHAR(20),
+  phone VARCHAR(20) NOT NULL UNIQUE,
   address VARCHAR(255),
   date_of_birth DATE,
   gender VARCHAR(10) DEFAULT 'male',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+DROP TRIGGER IF EXISTS trg_users_phone_before_insert;
+DROP TRIGGER IF EXISTS trg_users_phone_before_update;
+DROP TRIGGER IF EXISTS trg_students_phone_before_insert;
+DROP TRIGGER IF EXISTS trg_students_phone_before_update;
+
+DELIMITER $$
+CREATE TRIGGER trg_users_phone_before_insert
+BEFORE INSERT ON users
+FOR EACH ROW
+BEGIN
+  SET NEW.phone = TRIM(NEW.phone);
+  IF NEW.phone IS NULL OR NEW.phone = '' OR NEW.phone NOT REGEXP '^0[0-9]{9}$' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Số điện thoại nhân viên phải bắt đầu bằng số 0 và gồm đúng 10 chữ số';
+  END IF;
+  IF EXISTS (SELECT 1 FROM students WHERE phone = NEW.phone) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Số điện thoại đã tồn tại ở học viên';
+  END IF;
+END$$
+
+CREATE TRIGGER trg_users_phone_before_update
+BEFORE UPDATE ON users
+FOR EACH ROW
+BEGIN
+  SET NEW.phone = TRIM(NEW.phone);
+  IF NEW.phone IS NULL OR NEW.phone = '' OR NEW.phone NOT REGEXP '^0[0-9]{9}$' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Số điện thoại nhân viên phải bắt đầu bằng số 0 và gồm đúng 10 chữ số';
+  END IF;
+  IF EXISTS (SELECT 1 FROM students WHERE phone = NEW.phone) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Số điện thoại đã tồn tại ở học viên';
+  END IF;
+END$$
+
+CREATE TRIGGER trg_students_phone_before_insert
+BEFORE INSERT ON students
+FOR EACH ROW
+BEGIN
+  SET NEW.phone = TRIM(NEW.phone);
+  IF NEW.phone IS NULL OR NEW.phone = '' OR NEW.phone NOT REGEXP '^0[0-9]{9}$' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Số điện thoại học viên phải bắt đầu bằng số 0 và gồm đúng 10 chữ số';
+  END IF;
+  IF EXISTS (SELECT 1 FROM users WHERE phone = NEW.phone) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Số điện thoại đã tồn tại ở nhân viên';
+  END IF;
+END$$
+
+CREATE TRIGGER trg_students_phone_before_update
+BEFORE UPDATE ON students
+FOR EACH ROW
+BEGIN
+  SET NEW.phone = TRIM(NEW.phone);
+  IF NEW.phone IS NULL OR NEW.phone = '' OR NEW.phone NOT REGEXP '^0[0-9]{9}$' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Số điện thoại học viên phải bắt đầu bằng số 0 và gồm đúng 10 chữ số';
+  END IF;
+  IF EXISTS (SELECT 1 FROM users WHERE phone = NEW.phone) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Số điện thoại đã tồn tại ở nhân viên';
+  END IF;
+END$$
+DELIMITER ;
 
 CREATE TABLE courses (
   id INT AUTO_INCREMENT PRIMARY KEY,

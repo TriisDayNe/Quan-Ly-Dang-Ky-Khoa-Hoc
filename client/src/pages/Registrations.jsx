@@ -67,6 +67,8 @@ export default function Registrations() {
     return isNaN(n) ? 0 : n
   }
 
+  const isValidPhone = (phone) => /^0\d{9}$/.test(String(phone || '').trim())
+
   const calcTotal = () => {
     return selectedClasses.reduce((sum, cid) => {
       const cls = classes.find(c => c.id == cid)
@@ -77,6 +79,17 @@ export default function Registrations() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (selectedClasses.length === 0) return alert('Vui lòng chọn ít nhất 1 lớp học')
+
+    const selectedStudent = students.find(s => String(s.id) === String(form.student_id))
+    if (!selectedStudent) return alert('Vui lòng chọn học viên hợp lệ')
+    if (!isValidPhone(selectedStudent.phone)) {
+      return alert('Số điện thoại học viên phải bắt đầu bằng số 0 và gồm đúng 10 chữ số')
+    }
+    const duplicatePhoneEmployee = employees.find(e => String(e.phone || '').trim() === String(selectedStudent.phone || '').trim())
+    if (duplicatePhoneEmployee) {
+      return alert('Số điện thoại học viên đang trùng với nhân viên, vui lòng cập nhật học viên trước khi tạo phiếu')
+    }
+
     setLoading(true)
     try {
       const payload = {

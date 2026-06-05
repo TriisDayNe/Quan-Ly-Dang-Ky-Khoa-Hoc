@@ -7,7 +7,7 @@ const asyncHandler = require('../utils/asyncHandler');
 
 const router = express.Router();
 
-const isValidPhone = (phone) => /^\d{10}$/.test(String(phone || ''));
+const isValidPhone = (phone) => /^0\d{9}$/.test(String(phone || '').trim());
 
 async function genEmployeeCode() {
   const last = await db.prepare("SELECT code FROM users WHERE code LIKE 'NV%' ORDER BY id DESC LIMIT 1").get();
@@ -32,7 +32,7 @@ router.post('/login', asyncHandler(async (req, res) => {
 router.post('/register', asyncHandler(async (req, res) => {
   const { name, email, password, phone } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: 'Vui lòng nhập đầy đủ thông tin' });
-  if (phone && !isValidPhone(phone)) return res.status(400).json({ error: 'Số điện thoại phải gồm đúng 10 chữ số' });
+  if (phone && !isValidPhone(phone)) return res.status(400).json({ error: 'Số điện thoại phải bắt đầu bằng số 0 và gồm đúng 10 chữ số' });
 
   const existing = await db.prepare('SELECT id FROM users WHERE email = ?').get(email);
   if (existing) return res.status(400).json({ error: 'Email đã được sử dụng' });
@@ -40,6 +40,8 @@ router.post('/register', asyncHandler(async (req, res) => {
   if (phone) {
     const existingPhone = await db.prepare('SELECT id FROM users WHERE phone = ?').get(phone);
     if (existingPhone) return res.status(400).json({ error: 'Số điện thoại đã được sử dụng' });
+    const existingStudentPhone = await db.prepare('SELECT id FROM students WHERE phone = ?').get(phone);
+    if (existingStudentPhone) return res.status(400).json({ error: 'Số điện thoại đã tồn tại ở học viên' });
   }
 
   const code = await genEmployeeCode();

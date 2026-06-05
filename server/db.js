@@ -57,6 +57,73 @@ async function ensureDatabaseExists() {
   await bootstrapPool.end();
 }
 
+async function recreatePhoneValidationTriggers(connectionPool) {
+  await connectionPool.query('DROP TRIGGER IF EXISTS trg_users_phone_before_insert');
+  await connectionPool.query('DROP TRIGGER IF EXISTS trg_users_phone_before_update');
+  await connectionPool.query('DROP TRIGGER IF EXISTS trg_students_phone_before_insert');
+  await connectionPool.query('DROP TRIGGER IF EXISTS trg_students_phone_before_update');
+
+  await connectionPool.query(`
+    CREATE TRIGGER trg_users_phone_before_insert
+    BEFORE INSERT ON users
+    FOR EACH ROW
+    BEGIN
+      SET NEW.phone = TRIM(NEW.phone);
+      IF NEW.phone IS NULL OR NEW.phone = '' OR NEW.phone NOT REGEXP '^0[0-9]{9}$' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Số điện thoại nhân viên phải bắt đầu bằng số 0 và gồm đúng 10 chữ số';
+      END IF;
+      IF EXISTS (SELECT 1 FROM students WHERE phone = NEW.phone) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Số điện thoại đã tồn tại ở học viên';
+      END IF;
+    END
+  `);
+
+  await connectionPool.query(`
+    CREATE TRIGGER trg_users_phone_before_update
+    BEFORE UPDATE ON users
+    FOR EACH ROW
+    BEGIN
+      SET NEW.phone = TRIM(NEW.phone);
+      IF NEW.phone IS NULL OR NEW.phone = '' OR NEW.phone NOT REGEXP '^0[0-9]{9}$' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Số điện thoại nhân viên phải bắt đầu bằng số 0 và gồm đúng 10 chữ số';
+      END IF;
+      IF EXISTS (SELECT 1 FROM students WHERE phone = NEW.phone) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Số điện thoại đã tồn tại ở học viên';
+      END IF;
+    END
+  `);
+
+  await connectionPool.query(`
+    CREATE TRIGGER trg_students_phone_before_insert
+    BEFORE INSERT ON students
+    FOR EACH ROW
+    BEGIN
+      SET NEW.phone = TRIM(NEW.phone);
+      IF NEW.phone IS NULL OR NEW.phone = '' OR NEW.phone NOT REGEXP '^0[0-9]{9}$' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Số điện thoại học viên phải bắt đầu bằng số 0 và gồm đúng 10 chữ số';
+      END IF;
+      IF EXISTS (SELECT 1 FROM users WHERE phone = NEW.phone) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Số điện thoại đã tồn tại ở nhân viên';
+      END IF;
+    END
+  `);
+
+  await connectionPool.query(`
+    CREATE TRIGGER trg_students_phone_before_update
+    BEFORE UPDATE ON students
+    FOR EACH ROW
+    BEGIN
+      SET NEW.phone = TRIM(NEW.phone);
+      IF NEW.phone IS NULL OR NEW.phone = '' OR NEW.phone NOT REGEXP '^0[0-9]{9}$' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Số điện thoại học viên phải bắt đầu bằng số 0 và gồm đúng 10 chữ số';
+      END IF;
+      IF EXISTS (SELECT 1 FROM users WHERE phone = NEW.phone) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Số điện thoại đã tồn tại ở nhân viên';
+      END IF;
+    END
+  `);
+}
+
 async function ensureSchema(connectionPool) {
   await connectionPool.execute(`
     CREATE TABLE IF NOT EXISTS users (
@@ -92,6 +159,7 @@ async function ensureSchema(connectionPool) {
   }
 
   await connectionPool.execute(`UPDATE users SET phone = NULL WHERE phone = ''`);
+  await connectionPool.execute(`UPDATE users SET phone = TRIM(phone) WHERE phone IS NOT NULL`);
   const [phoneIndexes] = await connectionPool.execute(`SHOW INDEX FROM users WHERE Key_name = 'uq_users_phone'`);
   if (phoneIndexes.length === 0) {
     try {
@@ -114,6 +182,17 @@ async function ensureSchema(connectionPool) {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+
+  await connectionPool.execute(`UPDATE students SET phone = NULL WHERE phone = ''`);
+  await connectionPool.execute(`UPDATE students SET phone = TRIM(phone) WHERE phone IS NOT NULL`);
+  const [studentPhoneIndexes] = await connectionPool.execute(`SHOW INDEX FROM students WHERE Key_name = 'uq_students_phone'`);
+  if (studentPhoneIndexes.length === 0) {
+    try {
+      await connectionPool.execute(`ALTER TABLE students ADD UNIQUE KEY uq_students_phone (phone)`);
+    } catch (error) {
+      console.warn('Could not add unique phone index to students table:', error.message);
+    }
+  }
 
   await connectionPool.execute(`
     CREATE TABLE IF NOT EXISTS courses (
@@ -199,6 +278,12 @@ async function ensureSchema(connectionPool) {
     `,
     ['ADMIN', 'Quản trị viên', 'admin@trungtam.com', adminHash, 'admin', '0900000000', 'Trung tâm Anh ngữ', 'admin@trungtam.com']
   );
+
+  try {
+    await recreatePhoneValidationTriggers(connectionPool);
+  } catch (error) {
+    console.warn('Could not create phone validation triggers:', error.message);
+  }
 }
 
 async function initDb() {

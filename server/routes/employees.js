@@ -7,7 +7,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const router = express.Router();
 router.use(auth);
 
-const isValidPhone = (phone) => /^\d{10}$/.test(String(phone || ''));
+const isValidPhone = (phone) => /^0\d{9}$/.test(String(phone || '').trim());
 
 async function genCode() {
   const last = await db.prepare("SELECT code FROM users WHERE code LIKE 'NV%' ORDER BY id DESC LIMIT 1").get();
@@ -40,10 +40,12 @@ router.post('/', adminOnly, asyncHandler(async (req, res) => {
   if (!name || !email) return res.status(400).json({ error: 'Vui lòng nhập họ tên và email' });
   const exists = await db.prepare('SELECT id FROM users WHERE email = ?').get(email);
   if (exists) return res.status(400).json({ error: 'Email đã được sử dụng' });
-  if (phone && !isValidPhone(phone)) return res.status(400).json({ error: 'Số điện thoại phải gồm đúng 10 chữ số' });
+  if (phone && !isValidPhone(phone)) return res.status(400).json({ error: 'Số điện thoại phải bắt đầu bằng số 0 và gồm đúng 10 chữ số' });
   if (phone) {
     const existingPhone = await db.prepare('SELECT id FROM users WHERE phone = ?').get(phone);
     if (existingPhone) return res.status(400).json({ error: 'Số điện thoại đã được sử dụng' });
+    const existingStudentPhone = await db.prepare('SELECT id FROM students WHERE phone = ?').get(phone);
+    if (existingStudentPhone) return res.status(400).json({ error: 'Số điện thoại đã tồn tại ở học viên' });
   }
   const code = await genCode();
   const hash = bcrypt.hashSync(password || code, 10);
@@ -55,10 +57,12 @@ router.put('/:id', adminOnly, asyncHandler(async (req, res) => {
   const existing = await db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Không tìm thấy' });
   const { name, email, role, phone, address, password } = req.body;
-  if (phone && !isValidPhone(phone)) return res.status(400).json({ error: 'Số điện thoại phải gồm đúng 10 chữ số' });
+  if (phone && !isValidPhone(phone)) return res.status(400).json({ error: 'Số điện thoại phải bắt đầu bằng số 0 và gồm đúng 10 chữ số' });
   if (phone) {
     const existingPhone = await db.prepare('SELECT id FROM users WHERE phone = ? AND id != ?').get(phone, req.params.id);
     if (existingPhone) return res.status(400).json({ error: 'Số điện thoại đã được sử dụng' });
+    const existingStudentPhone = await db.prepare('SELECT id FROM students WHERE phone = ?').get(phone);
+    if (existingStudentPhone) return res.status(400).json({ error: 'Số điện thoại đã tồn tại ở học viên' });
   }
   const nextPassword = password ? bcrypt.hashSync(password, 10) : existing.password;
   await db.prepare('UPDATE users SET name=?, email=?, role=?, phone=?, address=? WHERE id=?').run(

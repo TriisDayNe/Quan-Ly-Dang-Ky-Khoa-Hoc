@@ -27,11 +27,11 @@ export default function Employees() {
   const openCreate = () => { setEditing(null); setForm(emptyForm); setModalOpen(true) }
   const openEdit = (e) => { setEditing(e); setForm({ name: e.name, email: e.email, role: e.role, phone: e.phone || '', address: e.address || '', password: '' }); setModalOpen(true) }
 
-  const isValidPhone = (phone) => /^\d{10}$/.test(phone)
+  const isValidPhone = (phone) => /^0\d{9}$/.test(phone)
 
   const handleSubmit = async (ev) => {
     ev.preventDefault()
-    if (!isValidPhone(form.phone)) return alert('Số điện thoại phải gồm đúng 10 chữ số')
+    if (!isValidPhone(form.phone)) return alert('Số điện thoại phải bắt đầu bằng số 0 và gồm đúng 10 chữ số')
     setLoading(true)
     try {
       if (editing) await axios.put(`/api/employees/${editing.id}`, form)
@@ -122,7 +122,7 @@ export default function Employees() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Số điện thoại</label>
-              <input type="text" value={form.phone} onChange={e => update('phone', e.target.value.replace(/\D/g, '').slice(0, 10))} maxLength={10} inputMode="numeric" pattern="[0-9]{10}" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" required />
+              <input type="text" value={form.phone} onChange={e => update('phone', e.target.value.replace(/\D/g, '').slice(0, 10))} maxLength={10} inputMode="numeric" pattern="0[0-9]{9}" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" required />
             </div>
           </div>
           <div>
